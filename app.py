@@ -59,62 +59,44 @@ def get_filing_text(cik, target_form):
     raise Exception(f"{target_form} のフィリングが見つかりませんでした。")
 
 
-def get_next_earnings_date(ticker):
-    """次回決算発表日をAlpha Vantage / Nasdaq API経由で取得"""
-    # 方法1: Nasdaq Earnings Calendar API
+def get_next_earnings_date(ticker, cik):
+    """SEC EDGARの8-Kフィリングから次回決算発表日を推定"""
     try:
-        url = f"https://api.nasdaq.com/api/calendar/earnings?date=2026-04-18"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Origin": "https://www.nasdaq.com",
-            "Referer": "https://www.nasdaq.com/",
-        }
-        # 今後30日間を検索
         today = datetime.date.today()
-        for days_ahead in range(0, 90, 7):
-            check_date = today + datetime.timedelta(days=days_ahead)
-            url = f"https://api.nasdaq.com/api/calendar/earnings?date={check_date.strftime('%Y-%m-%d')}"
-            resp = requests.get(url, headers=headers, timeout=8)
-            if resp.status_code == 200:
-                data = resp.json()
-                rows = data.get("data", {}).get("rows", [])
-                for row in rows:
-                    if row.get("symbol", "").upper() == ticker.upper():
-                        return check_date.strftime("%Y-%m-%d")
-    except Exception as e:
-        print(f"Nasdaq method failed: {e}")
+        submissions_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+        resp = requests.get(submissions_url, headers=SEC_HEADERS, timeout=10)
+        resp.raise_for_status()
+        submissions = resp.json()
+        filings = submissions.get("filings", {}).get("recent", {})
+        forms = filings.get("form", [])
+        dates = filings.get("filingDate", [])
 
-    # 方法2: Yahoo Finance crumb方式
-    try:
-        session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        })
-        # まずcookieを取得
-        session.get(f"https://finance.yahoo.com/quote/{ticker}", timeout=8)
-        # crumbを取得
-        crumb_resp = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8)
-        crumb = crumb_resp.text.strip()
-        if crumb:
-            url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=calendarEvents&crumb={crumb}"
-            resp = session.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                result = data.get("quoteSummary", {}).get("result", [])
-                if result:
-                    earnings = result[0].get("calendarEvents", {}).get("earnings", {})
-                    dates = earnings.get("earningsDate", [])
-                    if dates:
-                        ts = dates[0].get("raw")
-                        if ts:
-                            dt = datetime.datetime.utcfromtimestamp(ts)
-                            if dt.date() >= datetime.date.today():
-                                return dt.strftime("%Y-%m-%d")
+        # 直近の10-Q/10-Kの提出日から次回を推定
+        quarterly_dates = []
+        for i, form in enumerate(forms):
+            if form in ("10-Q", "10-K"):
+                try:
+                    d = datetime.date.fromisoformat(dates[i])
+                    quarterly_dates.append((d, form))
+                except Exception:
+                    pass
+
+        if len(quarterly_dates) >= 2:
+            quarterly_dates.sort(reverse=True)
+            latest = quarterly_dates[0][0]
+            second = quarterly_dates[1][0]
+            # 直近2回の間隔から次回を推定
+            delta = latest - second
+            next_date = latest + delta
+            if next_date > today:
+                return next_date.strftime("%Y-%m-%d") + " (推定)"
+            # さらに1期先
+            next_date2 = next_date + delta
+            if next_date2 > today:
+                return next_date2.strftime("%Y-%m-%d") + " (推定)"
+
     except Exception as e:
-        print(f"Yahoo crumb method failed: {e}")
+        print(f"Next earnings estimation failed: {e}")
 
     return None
 
@@ -172,7 +154,7 @@ def analyze():
         cik, company_name        = get_cik_from_ticker(ticker)
         filing_text, filing_date = get_filing_text(cik, report_type)
         result                   = analyze_with_claude(filing_text, ticker, report_type, filing_date, language)
-        next_earnings            = get_next_earnings_date(ticker)
+        next_earnings            = get_next_earnings_date(ticker, cik)
         print(f"Next earnings for {ticker}: {next_earnings}")
         return jsonify({
             'success':       True,
