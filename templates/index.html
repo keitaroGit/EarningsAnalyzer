@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Earnings Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f14; --surface: #151820; --border: #252935;
+      --accent: #e8c84a; --accent2: #4ae8a8; --text: #e8eaf0;
+      --muted: #6b7280; --danger: #e84a6a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Noto Serif JP', serif; min-height: 100vh; overflow-x: hidden; }
+    body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(232,200,74,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(232,200,74,0.03) 1px, transparent 1px); background-size: 48px 48px; pointer-events: none; z-index: 0; }
+    .container { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 56px 24px 80px; }
+    header { margin-bottom: 52px; animation: fadeDown 0.6s ease both; }
+    .logo-line { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+    .logo-mark { width: 24px; height: 24px; min-width: 24px; background: var(--accent); clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+    .title-wrap { display: flex; align-items: baseline; gap: 12px; overflow: visible; padding-bottom: 6px; }
+    h1 { font-family: 'Syne', sans-serif; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.6; overflow: visible; }
+    h1 span { color: var(--accent); }
+    .title-ja { font-family: 'Noto Serif JP', serif; font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
+    .subtitle { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; margin-left: 40px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; animation: fadeUp 0.5s 0.1s ease both; }
+    .input-group { margin-bottom: 24px; }
+    .input-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; display: block; }
+    .ticker-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; font-family: 'DM Mono', monospace; font-size: 1.5rem; font-weight: 500; color: var(--text); letter-spacing: 0.12em; text-transform: uppercase; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+    .ticker-input::placeholder { color: var(--muted); font-size: 1.1rem; font-weight: 400; letter-spacing: 0.06em; text-transform: none; }
+    .ticker-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,200,74,0.1); }
+    .divider { height: 1px; background: var(--border); margin: 24px 0; }
+    .section-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; display: block; }
+    .seg-toggle { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+    .seg-toggle input { display: none; }
+    .seg-toggle label { flex: 1; padding: 10px 6px; text-align: center; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); transition: all 0.18s; user-select: none; }
+    .seg-toggle input:checked + label { background: var(--accent); color: var(--bg); font-weight: 500; }
+    .btn-analyze { width: 100%; padding: 18px; background: var(--accent); color: var(--bg); border: none; border-radius: 10px; font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .btn-analyze:hover:not(:disabled) { background: #f0d456; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(232,200,74,0.28); }
+    .btn-analyze:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-arrow { transition: transform 0.2s; }
+    .btn-analyze:hover:not(:disabled) .btn-arrow { transform: translateX(4px); }
+    .error-box { display: none; background: rgba(232,74,106,0.07); border: 1px solid rgba(232,74,106,0.25); border-radius: 10px; padding: 14px 18px; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--danger); margin-top: 20px; line-height: 1.6; }
+    .error-box.show { display: block; }
+    .loading { display: none; text-align: center; padding: 52px 0 36px; }
+    .loading.show { display: block; }
+    .spinner-wrap { position: relative; width: 52px; height: 52px; margin: 0 auto 20px; }
+    .spinner { width: 52px; height: 52px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+    .spinner-inner { position: absolute; inset: 8px; border: 2px solid transparent; border-top-color: rgba(232,200,74,0.3); border-radius: 50%; animation: spin 1.4s linear infinite reverse; }
+    .loading-text { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); letter-spacing: 0.12em; }
+    .loading-sub { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: rgba(107,114,128,0.6); margin-top: 6px; }
+    #result-area { display: none; margin-top: 24px; animation: fadeUp 0.5s ease both; }
+    #result-area.show { display: block; }
+    .result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 0 4px; }
+    .result-title-wrap { display: flex; align-items: center; gap: 10px; }
+    .result-title-en { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; }
+    .result-title-ja { font-family: 'Noto Serif JP', serif; font-size: 0.78rem; color: var(--muted); }
+    .result-meta { font-family: 'DM Mono', monospace; font-size: 0.62rem; padding: 4px 10px; background: rgba(74,232,168,0.08); border: 1px solid rgba(74,232,168,0.22); border-radius: 20px; color: var(--accent2); letter-spacing: 0.06em; }
+    .result-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .result-section-header { padding: 10px 18px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); font-family: 'DM Mono', monospace; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+    .result-section-body { padding: 16px 18px; font-size: 0.88rem; line-height: 1.9; color: #c8cad0; white-space: pre-wrap; }
+    .disclaimer-box { background: rgba(232,74,106,0.05); border: 1px solid rgba(232,74,106,0.18); border-radius: 8px; padding: 12px 16px; font-family: 'DM Mono', monospace; font-size: 0.7rem; color: rgba(232,74,106,0.7); line-height: 1.7; margin-top: 6px; }
+    .next-earnings-box { display: none; background: rgba(232,200,74,0.06); border: 1px solid rgba(232,200,74,0.2); border-radius: 10px; padding: 14px 18px; margin-top: 10px; align-items: center; gap: 10px; }
+    .next-earnings-box.show { display: flex; }
+    .next-earnings-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+    .next-earnings-date { font-family: 'DM Mono', monospace; font-size: 0.88rem; color: var(--text); font-weight: 500; margin-left: auto; }
+    @keyframes fadeDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-line">
+        <div class="logo-mark"></div>
+        <div class="title-wrap">
+          <h1>Earnings <span>Analyzer</span></h1>
+          <span class="title-ja">決算分析ツール</span>
+        </div>
+      </div>
+      <p class="subtitle">SEC EDGAR — Powered by Claude AI</p>
+    </header>
+
+    <div class="panel">
+      <div class="input-group">
+        <span class="input-label">Ticker Symbol</span>
+        <input type="text" id="ticker-input" class="ticker-input" placeholder="例: AAPL" maxlength="10" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="divider"></div>
+      <span class="section-label">Report Type</span>
+      <div class="seg-toggle">
+        <input type="radio" name="report-type" id="type-10q" value="10-Q" checked>
+        <label for="type-10q">10-Q</label>
+        <input type="radio" name="report-type" id="type-10k" value="10-K">
+        <label for="type-10k">10-K</label>
+        <input type="radio" name="report-type" id="type-8k" value="8-K">
+        <label for="type-8k">8-K</label>
+        <input type="radio" name="report-type" id="type-def14a" value="DEF 14A">
+        <label for="type-def14a">DEF 14A</label>
+      </div>
+      <span class="section-label">Output Language</span>
+      <div class="seg-toggle">
+        <input type="radio" name="language" id="lang-ja" value="ja" checked>
+        <label for="lang-ja">🇯🇵 日本語</label>
+        <input type="radio" name="language" id="lang-en" value="en">
+        <label for="lang-en">🇺🇸 English</label>
+      </div>
+      <button class="btn-analyze" id="analyze-btn" disabled>
+        SEC EDGARから取得・分析 <span class="btn-arrow">→</span>
+      </button>
+      <div class="error-box" id="error-box"></div>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner-wrap">
+        <div class="spinner"></div>
+        <div class="spinner-inner"></div>
+      </div>
+      <p class="loading-text" id="loading-text">SEC EDGARからデータ取得中...</p>
+      <p class="loading-sub">しばらくお待ちください</p>
+    </div>
+
+    <div id="result-area">
+      <div class="result-header">
+        <div class="result-title-wrap">
+          <span class="result-title-en">Analysis Results</span>
+          <span class="result-title-ja">分析結果</span>
+        </div>
+        <div class="result-meta" id="result-meta">COMPLETE</div>
+      </div>
+      <div class="result-section">
+        <div class="result-section-header">Revenue &amp; Profit Summary</div>
+        <div class="result-section-body" id="res-revenue"></div>
+      </div>
+      <div class="result-section">
+        <div class="result-section-header">Analyst Comparison</div>
+        <div class="result-section-body" id="res-analyst"></div>
+      </div>
+      <div class="result-section">
+        <div class="result-section-header">Management Topics</div>
+        <div class="result-section-body" id="res-management"></div>
+      </div>
+      <div class="result-section">
+        <div class="result-section-header">Investor Summary</div>
+        <div class="result-section-body" id="res-investor"></div>
+      </div>
+      <div class="disclaimer-box" id="res-disclaimer"></div>
+      <div class="next-earnings-box" id="next-earnings-box">
+        <span class="next-earnings-label">📅 Next Earnings Date</span>
+        <span class="next-earnings-date" id="next-earnings-date"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tickerInput      = document.getElementById('ticker-input');
+    const analyzeBtn       = document.getElementById('analyze-btn');
+    const loading          = document.getElementById('loading');
+    const loadingText      = document.getElementById('loading-text');
+    const resultArea       = document.getElementById('result-area');
+    const errorBox         = document.getElementById('error-box');
+    const resultMeta       = document.getElementById('result-meta');
+    const nextEarningsBox  = document.getElementById('next-earnings-box');
+    const nextEarningsDate = document.getElementById('next-earnings-date');
+
+    tickerInput.addEventListener('input', () => {
+      tickerInput.value = tickerInput.value.toUpperCase().replace(/[^A-Z]/g, '');
+      analyzeBtn.disabled = tickerInput.value.trim().length === 0;
+    });
+
+    tickerInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !analyzeBtn.disabled) analyzeBtn.click();
+    });
+
+    analyzeBtn.addEventListener('click', async () => {
+      const ticker     = tickerInput.value.trim();
+      const language   = document.querySelector('input[name="language"]:checked').value;
+      const reportType = document.querySelector('input[name="report-type"]:checked').value;
+      if (!ticker) return;
+
+      errorBox.classList.remove('show');
+      resultArea.classList.remove('show');
+      nextEarningsBox.classList.remove('show');
+      loadingText.textContent = `SEC EDGARから ${reportType} を取得中...`;
+      loading.classList.add('show');
+      analyzeBtn.disabled = true;
+
+      try {
+        const res  = await fetch('/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker, language, report_type: reportType })
+        });
+        const data = await res.json();
+        loading.classList.remove('show');
+
+        if (!res.ok || data.error) { showError(data.error || 'エラーが発生しました'); return; }
+
+        const r = data.result;
+        document.getElementById('res-revenue').textContent    = r.revenue_profit_summary || '—';
+        document.getElementById('res-analyst').textContent    = r.analyst_comparison     || '—';
+        document.getElementById('res-management').textContent = r.management_topics      || '—';
+        document.getElementById('res-investor').textContent   = r.investor_summary       || '—';
+        document.getElementById('res-disclaimer').textContent = r.disclaimer             || '';
+
+        resultMeta.textContent = data.company_name
+          ? `${data.company_name} · ${data.form_type} · ${data.filing_date}`
+          : `${ticker} — COMPLETE`;
+
+        if (data.next_earnings) {
+          nextEarningsDate.textContent = data.next_earnings;
+          nextEarningsBox.classList.add('show');
+        }
+
+        resultArea.classList.add('show');
+      } catch (err) {
+        loading.classList.remove('show');
+        showError('通信エラー: ' + err.message);
+      } finally {
+        analyzeBtn.disabled = tickerInput.value.trim().length === 0;
+      }
+    });
+
+    function showError(msg) {
+      errorBox.textContent = '⚠  ' + msg;
+      errorBox.classList.add('show');
+    }
+  </script>
+</body>
+</html>
