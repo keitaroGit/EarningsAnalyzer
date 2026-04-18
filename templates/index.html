@@ -6,6 +6,7 @@
   <title>Earnings Analyzer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     :root {
       --bg: #0d0f14; --surface: #151820; --border: #252935;
@@ -19,8 +20,8 @@
     header { margin-bottom: 52px; animation: fadeDown 0.6s ease both; }
     .logo-line { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
     .logo-mark { width: 24px; height: 24px; min-width: 24px; background: var(--accent); clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
-    .title-wrap { display: flex; align-items: baseline; gap: 12px; overflow: visible; padding-bottom: 6px; }
-    h1 { font-family: 'Syne', sans-serif; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.6; overflow: visible; }
+    .title-wrap { display: flex; align-items: center; gap: 12px; }
+    h1 { font-family: 'Syne', sans-serif; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.6; }
     h1 span { color: var(--accent); }
     .title-ja { font-family: 'Noto Serif JP', serif; font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
     .subtitle { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; margin-left: 40px; }
@@ -65,6 +66,13 @@
     .next-earnings-box.show { display: flex; }
     .next-earnings-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
     .next-earnings-date { font-family: 'DM Mono', monospace; font-size: 0.88rem; color: var(--text); font-weight: 500; margin-left: auto; }
+    /* Charts */
+    .charts-section { display: none; margin-top: 10px; }
+    .charts-section.show { display: block; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .chart-card-header { padding: 10px 18px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); font-family: 'DM Mono', monospace; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+    .chart-card-body { padding: 16px 18px; }
+    .no-data { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); text-align: center; padding: 20px; }
     @keyframes fadeDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -86,7 +94,7 @@
     <div class="panel">
       <div class="input-group">
         <span class="input-label">Ticker Symbol</span>
-        <input type="text" id="ticker-input" class="ticker-input" placeholder="例: AAPL" maxlength="10" autocomplete="off" spellcheck="false" />
+        <input type="text" id="ticker-input" class="ticker-input" placeholder="e.g. AAPL" maxlength="10" autocomplete="off" spellcheck="false" />
       </div>
       <div class="divider"></div>
       <span class="section-label">Report Type</span>
@@ -118,8 +126,8 @@
         <div class="spinner"></div>
         <div class="spinner-inner"></div>
       </div>
-      <p class="loading-text" id="loading-text">SEC EDGARからデータ取得中...</p>
-      <p class="loading-sub">しばらくお待ちください</p>
+      <p class="loading-text" id="loading-text">Fetching data from SEC EDGAR...</p>
+      <p class="loading-sub">Please wait</p>
     </div>
 
     <div id="result-area">
@@ -130,13 +138,10 @@
         </div>
         <div class="result-meta" id="result-meta">COMPLETE</div>
       </div>
+
       <div class="result-section">
         <div class="result-section-header">Revenue &amp; Profit Summary</div>
         <div class="result-section-body" id="res-revenue"></div>
-      </div>
-      <div class="result-section">
-        <div class="result-section-header">Analyst Comparison</div>
-        <div class="result-section-body" id="res-analyst"></div>
       </div>
       <div class="result-section">
         <div class="result-section-header">Management Topics</div>
@@ -146,11 +151,38 @@
         <div class="result-section-header">Investor Summary</div>
         <div class="result-section-body" id="res-investor"></div>
       </div>
-      <div class="disclaimer-box" id="res-disclaimer"></div>
+      <!-- Charts -->
+      <div class="charts-section" id="charts-section">
+        <div class="result-header" style="margin-top:16px;">
+          <div class="result-title-wrap">
+            <span class="result-title-en">Historical Financials</span>
+            <span class="result-title-ja">過去実績</span>
+          </div>
+          <div class="result-meta">SEC EDGAR · XBRL</div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header">Revenue — USD Billions</div>
+          <div class="chart-card-body">
+            <canvas id="revenueChart" height="140"></canvas>
+            <div class="no-data" id="revenue-no-data" style="display:none;">No revenue data available</div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header">Net Income — USD Billions</div>
+          <div class="chart-card-body">
+            <canvas id="incomeChart" height="140"></canvas>
+            <div class="no-data" id="income-no-data" style="display:none;">No net income data available</div>
+          </div>
+        </div>
+      </div>
+
       <div class="next-earnings-box" id="next-earnings-box">
         <span class="next-earnings-label">📅 Next Earnings Date</span>
         <span class="next-earnings-date" id="next-earnings-date"></span>
       </div>
+      <div class="disclaimer-box" id="res-disclaimer"></div>
     </div>
   </div>
 
@@ -164,6 +196,10 @@
     const resultMeta       = document.getElementById('result-meta');
     const nextEarningsBox  = document.getElementById('next-earnings-box');
     const nextEarningsDate = document.getElementById('next-earnings-date');
+    const chartsSection    = document.getElementById('charts-section');
+
+    let revenueChart = null;
+    let incomeChart  = null;
 
     tickerInput.addEventListener('input', () => {
       tickerInput.value = tickerInput.value.toUpperCase().replace(/[^A-Z]/g, '');
@@ -174,6 +210,60 @@
       if (e.key === 'Enter' && !analyzeBtn.disabled) analyzeBtn.click();
     });
 
+    function makeChart(canvasId, noDataId, labels, values, color) {
+      const canvas = document.getElementById(canvasId);
+      const noData = document.getElementById(noDataId);
+
+      if (!values || values.length === 0) {
+        canvas.style.display = 'none';
+        noData.style.display = 'block';
+        return null;
+      }
+
+      canvas.style.display = 'block';
+      noData.style.display = 'none';
+
+      const ctx = canvas.getContext('2d');
+      return new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: values,
+            backgroundColor: values.map(v => v >= 0 ? color + 'cc' : 'rgba(232,74,106,0.7)'),
+            borderColor: values.map(v => v >= 0 ? color : 'rgba(232,74,106,1)'),
+            borderWidth: 1,
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => `$${ctx.parsed.y.toFixed(2)}B`
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            },
+            y: {
+              ticks: {
+                color: '#6b7280',
+                font: { family: 'DM Mono', size: 10 },
+                callback: v => `$${v}B`
+              },
+              grid: { color: 'rgba(255,255,255,0.05)' }
+            }
+          }
+        }
+      });
+    }
+
     analyzeBtn.addEventListener('click', async () => {
       const ticker     = tickerInput.value.trim();
       const language   = document.querySelector('input[name="language"]:checked').value;
@@ -183,9 +273,14 @@
       errorBox.classList.remove('show');
       resultArea.classList.remove('show');
       nextEarningsBox.classList.remove('show');
-      loadingText.textContent = `SEC EDGARから ${reportType} を取得中...`;
+      chartsSection.classList.remove('show');
+      loadingText.textContent = `Fetching ${reportType} from SEC EDGAR...`;
       loading.classList.add('show');
       analyzeBtn.disabled = true;
+
+      // Destroy old charts
+      if (revenueChart) { revenueChart.destroy(); revenueChart = null; }
+      if (incomeChart)  { incomeChart.destroy();  incomeChart  = null; }
 
       try {
         const res  = await fetch('/analyze', {
@@ -196,11 +291,10 @@
         const data = await res.json();
         loading.classList.remove('show');
 
-        if (!res.ok || data.error) { showError(data.error || 'エラーが発生しました'); return; }
+        if (!res.ok || data.error) { showError(data.error || 'An error occurred'); return; }
 
         const r = data.result;
         document.getElementById('res-revenue').textContent    = r.revenue_profit_summary || '—';
-        document.getElementById('res-analyst').textContent    = r.analyst_comparison     || '—';
         document.getElementById('res-management').textContent = r.management_topics      || '—';
         document.getElementById('res-investor').textContent   = r.investor_summary       || '—';
         document.getElementById('res-disclaimer').textContent = r.disclaimer             || '';
@@ -214,10 +308,25 @@
           nextEarningsBox.classList.add('show');
         }
 
+        // Charts
+        const fh = data.financial_history;
+        if (fh && (fh.revenue.length > 0 || fh.net_income.length > 0)) {
+          chartsSection.classList.add('show');
+
+          const revLabels = fh.revenue.map(d => d.period.substring(0, 7));
+          const revValues = fh.revenue.map(d => d.value);
+          revenueChart = makeChart('revenueChart', 'revenue-no-data', revLabels, revValues, 'rgba(232,200,74,1)');
+
+          const incLabels = fh.net_income.map(d => d.period.substring(0, 7));
+          const incValues = fh.net_income.map(d => d.value);
+          incomeChart = makeChart('incomeChart', 'income-no-data', incLabels, incValues, 'rgba(74,232,168,1)');
+        }
+
         resultArea.classList.add('show');
+
       } catch (err) {
         loading.classList.remove('show');
-        showError('通信エラー: ' + err.message);
+        showError('Connection error: ' + err.message);
       } finally {
         analyzeBtn.disabled = tickerInput.value.trim().length === 0;
       }
