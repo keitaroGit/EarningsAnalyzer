@@ -5,82 +5,282 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Earnings Analyzer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&family=Playfair+Display:wght@700;800&family=Bebas+Neue&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #0d0f14; --surface: #151820; --border: #252935;
-      --accent: #e8c84a; --accent2: #4ae8a8; --text: #e8eaf0;
-      --muted: #6b7280; --danger: #e84a6a;
+      --bg: #fff0f5;
+      --surface: #ffffff;
+      --border: #f9c0d4;
+      --accent: #e8185a;
+      --accent2: #ff6b9d;
+      --accent3: #c0026e;
+      --text: #2a0a14;
+      --muted: #a06070;
+      --danger: #c0026e;
+      --chart1: #e8185a;
+      --chart2: #ff6b9d;
+      --chart3: #9b1060;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: 'Noto Serif JP', serif; min-height: 100vh; overflow-x: hidden; }
-    body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(232,200,74,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(232,200,74,0.03) 1px, transparent 1px); background-size: 48px 48px; pointer-events: none; z-index: 0; }
-    .container { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 56px 24px 80px; }
-    header { margin-bottom: 52px; animation: fadeDown 0.6s ease both; }
-    .logo-line { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
-    .logo-mark { width: 24px; height: 24px; min-width: 24px; background: var(--accent); clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
-    .title-wrap { display: flex; align-items: center; gap: 12px; }
-    h1 { font-family: 'Syne', sans-serif; font-size: 1.75rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.6; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 20%, rgba(232,24,90,0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(255,107,157,0.08) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 56px 24px 40px;
+    }
+    /* Header */
+    header { margin-bottom: 48px; animation: fadeDown 0.6s ease both; }
+    .logo-line { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+    .logo-mark {
+      width: 26px; height: 26px; min-width: 26px;
+      background: var(--accent);
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    }
+    .title-wrap { display: flex; align-items: baseline; gap: 12px; overflow: visible; padding-bottom: 6px; }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.6rem;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      line-height: 1.2;
+      color: var(--text);
+      overflow: visible;
+    }
     h1 span { color: var(--accent); }
-    .title-ja { font-family: 'Noto Serif JP', serif; font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
-    .subtitle { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; margin-left: 40px; }
-    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; animation: fadeUp 0.5s 0.1s ease both; }
-    .input-group { margin-bottom: 24px; }
-    .input-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; display: block; }
-    .ticker-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; font-family: 'DM Mono', monospace; font-size: 1.5rem; font-weight: 500; color: var(--text); letter-spacing: 0.12em; text-transform: uppercase; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
-    .ticker-input::placeholder { color: var(--muted); font-size: 1.1rem; font-weight: 400; letter-spacing: 0.06em; text-transform: none; }
-    .ticker-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,200,74,0.1); }
-    .divider { height: 1px; background: var(--border); margin: 24px 0; }
-    .section-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; display: block; }
-    .seg-toggle { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+    .title-ja {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    /* Panel */
+    .panel {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      box-shadow: 0 4px 24px rgba(232,24,90,0.08);
+      animation: fadeUp 0.5s 0.1s ease both;
+    }
+    .input-label {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.9rem;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+      margin-bottom: 10px;
+      display: block;
+    }
+    .ticker-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem;
+      font-weight: 400;
+      color: var(--text);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .ticker-input::placeholder {
+      color: var(--muted);
+      font-size: 1.4rem;
+      opacity: 0.5;
+    }
+    .ticker-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(232,24,90,0.12);
+    }
+    .divider { height: 1.5px; background: var(--border); margin: 24px 0; }
+    .section-label {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.88rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 10px;
+      display: block;
+    }
+    .seg-toggle {
+      display: flex;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
     .seg-toggle input { display: none; }
-    .seg-toggle label { flex: 1; padding: 10px 6px; text-align: center; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); transition: all 0.18s; user-select: none; }
-    .seg-toggle input:checked + label { background: var(--accent); color: var(--bg); font-weight: 500; }
-    .btn-analyze { width: 100%; padding: 18px; background: var(--accent); color: var(--bg); border: none; border-radius: 10px; font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; }
-    .btn-analyze:hover:not(:disabled) { background: #f0d456; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(232,200,74,0.28); }
+    .seg-toggle label {
+      flex: 1;
+      padding: 10px 6px;
+      text-align: center;
+      cursor: pointer;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      transition: all 0.18s;
+      user-select: none;
+    }
+    .seg-toggle input:checked + label {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-analyze {
+      width: 100%;
+      padding: 18px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.1rem;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 4px 16px rgba(232,24,90,0.25);
+    }
+    .btn-analyze:hover:not(:disabled) {
+      background: var(--accent3);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 28px rgba(232,24,90,0.35);
+    }
     .btn-analyze:disabled { opacity: 0.35; cursor: not-allowed; }
     .btn-arrow { transition: transform 0.2s; }
     .btn-analyze:hover:not(:disabled) .btn-arrow { transform: translateX(4px); }
-    .error-box { display: none; background: rgba(232,74,106,0.07); border: 1px solid rgba(232,74,106,0.25); border-radius: 10px; padding: 14px 18px; font-family: 'DM Mono', monospace; font-size: 0.78rem; color: var(--danger); margin-top: 20px; line-height: 1.6; }
+    .error-box {
+      display: none;
+      background: rgba(192,2,110,0.06);
+      border: 1.5px solid rgba(192,2,110,0.2);
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 0.82rem;
+      color: var(--danger);
+      margin-top: 20px;
+      line-height: 1.6;
+    }
     .error-box.show { display: block; }
+    /* Loading */
     .loading { display: none; text-align: center; padding: 52px 0 36px; }
     .loading.show { display: block; }
     .spinner-wrap { position: relative; width: 52px; height: 52px; margin: 0 auto 20px; }
     .spinner { width: 52px; height: 52px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
-    .spinner-inner { position: absolute; inset: 8px; border: 2px solid transparent; border-top-color: rgba(232,200,74,0.3); border-radius: 50%; animation: spin 1.4s linear infinite reverse; }
-    .loading-text { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); letter-spacing: 0.12em; }
-    .loading-sub { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: rgba(107,114,128,0.6); margin-top: 6px; }
+    .spinner-inner { position: absolute; inset: 8px; border: 2px solid transparent; border-top-color: rgba(232,24,90,0.3); border-radius: 50%; animation: spin 1.4s linear infinite reverse; }
+    .loading-text { font-family: 'Bebas Neue', sans-serif; font-size: 0.9rem; letter-spacing: 0.1em; color: var(--muted); }
+    .loading-sub { font-size: 0.75rem; color: var(--muted); opacity: 0.6; margin-top: 6px; }
+    /* Results */
     #result-area { display: none; margin-top: 24px; animation: fadeUp 0.5s ease both; }
     #result-area.show { display: block; }
-    .result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 0 4px; }
-    .result-title-wrap { display: flex; align-items: center; gap: 10px; }
-    .result-title-en { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; }
-    .result-title-ja { font-family: 'Noto Serif JP', serif; font-size: 0.78rem; color: var(--muted); }
-    .result-meta { font-family: 'DM Mono', monospace; font-size: 0.62rem; padding: 4px 10px; background: rgba(74,232,168,0.08); border: 1px solid rgba(74,232,168,0.22); border-radius: 20px; color: var(--accent2); letter-spacing: 0.06em; }
-    .result-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
-    .result-section-header { padding: 10px 18px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); font-family: 'DM Mono', monospace; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
-    .result-section-body { padding: 16px 18px; font-size: 0.88rem; line-height: 1.9; color: #c8cad0; white-space: pre-wrap; }
-    .disclaimer-box { background: rgba(232,74,106,0.05); border: 1px solid rgba(232,74,106,0.18); border-radius: 8px; padding: 12px 16px; font-family: 'DM Mono', monospace; font-size: 0.7rem; color: rgba(232,74,106,0.7); line-height: 1.7; margin-top: 6px; }
-    .next-earnings-box { display: none; background: rgba(232,200,74,0.06); border: 1px solid rgba(232,200,74,0.2); border-radius: 10px; padding: 14px 18px; margin-top: 10px; align-items: center; gap: 10px; }
+    .result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding: 0 4px; }
+    .result-title-wrap { display: flex; align-items: baseline; gap: 10px; }
+    .result-title-en { font-family: 'Playfair Display', serif; font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .result-title-ja { font-family: 'Noto Serif JP', serif; font-size: 0.75rem; color: var(--muted); }
+    .result-meta {
+      font-size: 0.62rem;
+      padding: 4px 10px;
+      background: rgba(232,24,90,0.06);
+      border: 1.5px solid rgba(232,24,90,0.2);
+      border-radius: 20px;
+      color: var(--accent);
+      letter-spacing: 0.06em;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .result-section {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 8px rgba(232,24,90,0.05);
+    }
+    .result-section-header {
+      padding: 10px 18px;
+      background: rgba(232,24,90,0.04);
+      border-bottom: 1.5px solid var(--border);
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      color: var(--accent);
+    }
+    .result-section-body {
+      padding: 16px 18px;
+      font-size: 0.88rem;
+      line-height: 1.9;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    .disclaimer-box {
+      background: rgba(192,2,110,0.04);
+      border: 1.5px solid rgba(192,2,110,0.15);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-top: 6px;
+    }
+    .next-earnings-box {
+      display: none;
+      background: rgba(232,24,90,0.05);
+      border: 1.5px solid rgba(232,24,90,0.2);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-top: 10px;
+      align-items: center;
+      gap: 10px;
+    }
     .next-earnings-box.show { display: flex; }
-    .next-earnings-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
-    .next-earnings-date { font-family: 'DM Mono', monospace; font-size: 0.88rem; color: var(--text); font-weight: 500; margin-left: auto; }
-    /* Consensus box */
-    .consensus-box { display: none; background: rgba(74,232,168,0.05); border: 1px solid rgba(74,232,168,0.2); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .next-earnings-label { font-family: 'Bebas Neue', sans-serif; font-size: 0.82rem; letter-spacing: 0.1em; color: var(--accent); }
+    .next-earnings-date { font-size: 0.88rem; color: var(--text); font-weight: 500; margin-left: auto; font-family: 'DM Sans', sans-serif; }
+    /* Consensus */
+    .consensus-box { display: none; background: rgba(232,24,90,0.04); border: 1.5px solid rgba(232,24,90,0.18); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
     .consensus-box.show { display: block; }
-    .consensus-header { padding: 10px 18px; background: rgba(74,232,168,0.05); border-bottom: 1px solid rgba(74,232,168,0.15); font-family: 'DM Mono', monospace; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); }
+    .consensus-header { padding: 10px 18px; background: rgba(232,24,90,0.06); border-bottom: 1.5px solid rgba(232,24,90,0.15); font-family: 'Bebas Neue', sans-serif; font-size: 0.82rem; letter-spacing: 0.12em; color: var(--accent); }
     .consensus-body { padding: 12px 18px; display: flex; gap: 16px; flex-wrap: wrap; }
-    .consensus-item { font-family: 'DM Mono', monospace; font-size: 0.78rem; }
+    .consensus-item { font-size: 0.78rem; }
     .consensus-period { color: var(--muted); font-size: 0.68rem; margin-bottom: 2px; }
-    .consensus-value { color: var(--accent2); font-weight: 500; }
+    .consensus-value { color: var(--accent); font-weight: 500; }
     /* Charts */
     .charts-section { display: none; margin-top: 10px; }
     .charts-section.show { display: block; }
-    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
-    .chart-card-header { padding: 10px 18px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); font-family: 'DM Mono', monospace; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+    .chart-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(232,24,90,0.05); }
+    .chart-card-header { padding: 10px 18px; background: rgba(232,24,90,0.04); border-bottom: 1.5px solid var(--border); font-family: 'Bebas Neue', sans-serif; font-size: 0.82rem; letter-spacing: 0.12em; color: var(--accent); }
     .chart-card-body { padding: 16px 18px; }
-    .no-data { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); text-align: center; padding: 20px; }
+    .no-data { font-size: 0.75rem; color: var(--muted); text-align: center; padding: 20px; }
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 32px 0 24px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
     @keyframes fadeDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -96,11 +296,10 @@
           <span class="title-ja">決算分析ツール</span>
         </div>
       </div>
-      <p class="subtitle">SEC EDGAR — Powered by Claude AI</p>
     </header>
 
     <div class="panel">
-      <div class="input-group">
+      <div style="margin-bottom:24px;">
         <span class="input-label">Ticker Symbol</span>
         <input type="text" id="ticker-input" class="ticker-input" placeholder="e.g. AAPL" maxlength="10" autocomplete="off" spellcheck="false" />
       </div>
@@ -147,9 +346,8 @@
         <div class="result-meta" id="result-meta">COMPLETE</div>
       </div>
 
-      <!-- コンセンサス予想 -->
       <div class="consensus-box" id="consensus-box">
-        <div class="consensus-header">📊 Analyst Consensus Estimates</div>
+        <div class="consensus-header">Analyst Consensus Estimates</div>
         <div class="consensus-body" id="consensus-body"></div>
       </div>
 
@@ -165,7 +363,7 @@
         <div class="result-section-header">Investor Summary</div>
         <div class="result-section-body" id="res-investor"></div>
       </div>
-      <!-- Charts -->
+
       <div class="charts-section" id="charts-section">
         <div class="result-header" style="margin-top:16px;">
           <div class="result-title-wrap">
@@ -174,7 +372,6 @@
           </div>
           <div class="result-meta">SEC EDGAR · XBRL</div>
         </div>
-
         <div class="chart-card">
           <div class="chart-card-header">Revenue — USD Billions</div>
           <div class="chart-card-body">
@@ -182,7 +379,6 @@
             <div class="no-data" id="revenue-no-data" style="display:none;">No revenue data available</div>
           </div>
         </div>
-
         <div class="chart-card">
           <div class="chart-card-header">Net Income — USD Billions</div>
           <div class="chart-card-body">
@@ -190,8 +386,7 @@
             <div class="no-data" id="income-no-data" style="display:none;">No net income data available</div>
           </div>
         </div>
-
-        <div class="chart-card" id="eps-card">
+        <div class="chart-card">
           <div class="chart-card-header">EPS — Diluted (USD per share)</div>
           <div class="chart-card-body">
             <canvas id="epsChart" height="140"></canvas>
@@ -206,6 +401,10 @@
       </div>
       <div class="disclaimer-box" id="res-disclaimer"></div>
     </div>
+
+    <footer>
+      SEC EDGAR — Powered by Claude AI &nbsp;·&nbsp; earningsanalyzer.onrender.com
+    </footer>
   </div>
 
   <script>
@@ -249,11 +448,11 @@
       return new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: labels,
+          labels,
           datasets: [{
             data: values,
-            backgroundColor: values.map(v => v >= 0 ? color + 'cc' : 'rgba(232,74,106,0.7)'),
-            borderColor: values.map(v => v >= 0 ? color : 'rgba(232,74,106,1)'),
+            backgroundColor: values.map(v => v >= 0 ? color + 'bb' : 'rgba(192,2,110,0.6)'),
+            borderColor: values.map(v => v >= 0 ? color : 'rgba(192,2,110,1)'),
             borderWidth: 1,
             borderRadius: 4,
           }]
@@ -262,15 +461,11 @@
           responsive: true,
           plugins: {
             legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: ctx => `${prefix}${ctx.parsed.y.toFixed(2)}${suffix}`
-              }
-            }
+            tooltip: { callbacks: { label: ctx => `${prefix}${ctx.parsed.y.toFixed(2)}${suffix}` } }
           },
           scales: {
-            x: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, callback: v => `${prefix}${v}${suffix}` }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            x: { ticks: { color: '#a06070', font: { family: 'DM Sans', size: 10 } }, grid: { color: 'rgba(232,24,90,0.06)' } },
+            y: { ticks: { color: '#a06070', font: { family: 'DM Sans', size: 10 }, callback: v => `${prefix}${v}${suffix}` }, grid: { color: 'rgba(232,24,90,0.06)' } }
           }
         }
       });
@@ -316,7 +511,6 @@
           ? `${data.company_name} · ${data.form_type} · ${data.filing_date}`
           : `${ticker} — COMPLETE`;
 
-        // コンセンサス予想表示
         if (data.consensus && data.consensus.length > 0) {
           consensusBody.innerHTML = '';
           data.consensus.forEach(c => {
@@ -324,9 +518,7 @@
             div.className = 'consensus-item';
             let html = `<div class="consensus-period">${c.period}</div>`;
             html += `<div class="consensus-value">EPS Est: $${c.eps_estimate}</div>`;
-            if (c.revenue_estimate_b) {
-              html += `<div class="consensus-value">Rev Est: $${c.revenue_estimate_b}B</div>`;
-            }
+            if (c.revenue_estimate_b) html += `<div class="consensus-value">Rev Est: $${c.revenue_estimate_b}B</div>`;
             div.innerHTML = html;
             consensusBody.appendChild(div);
           });
@@ -338,21 +530,12 @@
           nextEarningsBox.classList.add('show');
         }
 
-        // Charts
         const fh = data.financial_history;
         if (fh && (fh.revenue.length > 0 || fh.net_income.length > 0 || fh.eps.length > 0)) {
           chartsSection.classList.add('show');
-          const revLabels = fh.revenue.map(d => d.period.substring(0, 7));
-          const revValues = fh.revenue.map(d => d.value);
-          revenueChart = makeChart('revenueChart', 'revenue-no-data', revLabels, revValues, 'rgba(232,200,74,1)', '$', 'B');
-
-          const incLabels = fh.net_income.map(d => d.period.substring(0, 7));
-          const incValues = fh.net_income.map(d => d.value);
-          incomeChart = makeChart('incomeChart', 'income-no-data', incLabels, incValues, 'rgba(74,232,168,1)', '$', 'B');
-
-          const epsLabels = fh.eps.map(d => d.period.substring(0, 7));
-          const epsValues = fh.eps.map(d => d.value);
-          epsChart = makeChart('epsChart', 'eps-no-data', epsLabels, epsValues, 'rgba(168,130,232,1)', '$', '');
+          revenueChart = makeChart('revenueChart', 'revenue-no-data', fh.revenue.map(d=>d.period.substring(0,7)), fh.revenue.map(d=>d.value), 'rgba(232,24,90,1)', '$', 'B');
+          incomeChart  = makeChart('incomeChart',  'income-no-data',  fh.net_income.map(d=>d.period.substring(0,7)), fh.net_income.map(d=>d.value), 'rgba(255,107,157,1)', '$', 'B');
+          epsChart     = makeChart('epsChart',     'eps-no-data',     fh.eps.map(d=>d.period.substring(0,7)), fh.eps.map(d=>d.value), 'rgba(155,16,96,1)', '$', '');
         }
 
         resultArea.classList.add('show');
