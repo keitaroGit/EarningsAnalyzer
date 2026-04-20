@@ -192,16 +192,17 @@ def get_financial_history(cik, ticker):
             quarterly = list(period_dict.values())
             quarterly.sort(key=lambda x: x["period"])
             return quarterly[-8:] if len(quarterly) >= 2 else []
-        revenue_data = []
-        for key in revenue_keys:
-            revenue_data = extract_quarterly(key)
-            if revenue_data:
-                break
-        income_data = []
-        for key in income_keys:
-            income_data = extract_quarterly(key)
-            if income_data:
-                break
+        # 最新データがあるキーを選択
+        def best_data(keys):
+            best = []
+            for key in keys:
+                data = extract_quarterly(key)
+                if data and (not best or data[-1]["period"] > best[-1]["period"]):
+                    best = data
+            return best
+
+        revenue_data = best_data(revenue_keys)
+        income_data = best_data(income_keys)
         def to_billions(items):
             return [{"period": item["period"], "value": round(item["value"] / 1_000_000_000, 2), "form": item["form"]} for item in items]
         return {"revenue": to_billions(revenue_data), "net_income": to_billions(income_data), "currency": "USD Billions"}
@@ -254,7 +255,7 @@ def analyze_with_claude(filing_text, ticker, form_type, filing_date, language):
     }
     form_desc = form_descriptions.get(form_type, form_type)
     system_prompt = f"""You are an expert financial analyst specializing in SEC filings.
-Analyze the provided {form_type} ({form_desc}) and respond in {lang_label}.
+Analyze the provided {form_type} ({form_desc}) and respond ENTIRELY in {lang_label}. ALL text in the JSON values must be in {lang_label}. Do not use any other language.
 IMPORTANT RULES:
 - Always extract and state specific dollar amounts, percentages, and figures when available
 - Never say "figures are not available" or "not included in the text" - instead summarize what IS available
