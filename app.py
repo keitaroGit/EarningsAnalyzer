@@ -34,6 +34,100 @@ def get_cik_from_ticker(ticker):
     raise Exception(f"Ticker '{ticker}' not found.")
 
 
+def extract_relevant_text(raw_text, form_type):
+    """書類種別ごとに複数セクションを狙い撃ちして抽出・結合"""
+    MAX_CHARS = 25000  # セクションごとの最大文字数
+    text_upper = raw_text.upper()
+
+    if form_type in ("10-Q", "10-K"):
+        # セクション1: Results of Operations（経営分析・前年比説明）
+        results_keywords = [
+            "RESULTS OF OPERATIONS",
+            "MANAGEMENT'S DISCUSSION",
+        ]
+        # セクション2: 財務諸表（具体的な数字）
+        financial_keywords = [
+            "CONSOLIDATED STATEMENTS OF OPERATIONS",
+            "CONSOLIDATED STATEMENTS OF INCOME",
+            "CONDENSED CONSOLIDATED STATEMENTS",
+            "STATEMENTS OF OPERATIONS",
+            "STATEMENTS OF INCOME",
+        ]
+
+        section1 = ""
+        for kw in results_keywords:
+            idx = text_upper.find(kw)
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS)
+                section1 = raw_text[start:end]
+                print(f"Section1 found: '{kw}' at {idx}, {len(section1)} chars")
+                break
+
+        section2 = ""
+        for kw in financial_keywords:
+            idx = text_upper.find(kw)
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS)
+                section2 = raw_text[start:end]
+                print(f"Section2 found: '{kw}' at {idx}, {len(section2)} chars")
+                break
+
+        if section1 or section2:
+            combined = ""
+            if section2:
+                combined += "=== FINANCIAL STATEMENTS ===\n" + section2 + "\n\n"
+            if section1:
+                combined += "=== RESULTS OF OPERATIONS ===\n" + section1
+            print(f"Combined text: {len(combined)} chars")
+            return combined
+
+        # 見つからない場合は先頭から
+        print(f"No keywords found, using first 50000 chars")
+        return raw_text[:50000]
+
+    elif form_type == "8-K":
+        keywords = [
+            "Item 2.02",
+            "ITEM 2.02",
+            "Results of Operations and Financial Condition",
+            "RESULTS OF OPERATIONS",
+            "Item 2.01",
+            "Item 1.01",
+        ]
+        for kw in keywords:
+            idx = text_upper.find(kw.upper())
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS * 2)
+                extracted = raw_text[start:end]
+                print(f"8-K keyword '{kw}' found at {idx}, {len(extracted)} chars")
+                return extracted
+        return raw_text[:50000]
+
+    elif form_type == "DEF 14A":
+        keywords = [
+            "EXECUTIVE COMPENSATION",
+            "Executive Compensation",
+            "COMPENSATION DISCUSSION",
+            "Compensation Discussion",
+            "SUMMARY COMPENSATION TABLE",
+            "Summary Compensation Table",
+        ]
+        for kw in keywords:
+            idx = text_upper.find(kw.upper())
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS * 2)
+                extracted = raw_text[start:end]
+                print(f"DEF14A keyword '{kw}' found at {idx}, {len(extracted)} chars")
+                return extracted
+        return raw_text[:50000]
+
+    return raw_text[:50000]
+
+
 def get_filing_text(cik, target_form):
     submissions_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
     resp = requests.get(submissions_url, headers=SEC_HEADERS, timeout=10)
@@ -55,85 +149,62 @@ def get_filing_text(cik, target_form):
             text = doc_resp.text
             text = re.sub(r'<[^>]+>', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
-            return text[:12000], filing_date
+            extracted = extract_relevant_text(text, target_form)
+            return extracted, filing_date
     raise Exception(f"{target_form} filing not found.")
 
 
 def get_financial_history(cik, ticker):
-    """SEC EDGAR XBRLから過去8期分の財務データを取得"""
     try:
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
         resp = requests.get(url, headers=SEC_HEADERS, timeout=15)
         resp.raise_for_status()
         facts = resp.json()
-
         us_gaap = facts.get("facts", {}).get("us-gaap", {})
-
-        # 売上高の候補キー
         revenue_keys = [
-            "RevenueFromContractWithCustomerExcludingAssessedTax",
             "Revenues",
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
             "SalesRevenueNet",
             "RevenueFromContractWithCustomerIncludingAssessedTax",
             "SalesRevenueGoodsNet",
         ]
-
-        # 純利益の候補キー
         income_keys = [
             "NetIncomeLoss",
             "ProfitLoss",
             "NetIncomeLossAvailableToCommonStockholdersBasic",
         ]
-
         def extract_quarterly(key):
             data = us_gaap.get(key, {})
             units = data.get("units", {})
             usd = units.get("USD", [])
-            # 四半期データのみ（form=10-Q or 10-K, frame付き）
-            quarterly = []
-            seen = set()
+            # 期間ごとに最小値を選択（四半期単体の値を優先）
+            period_dict = {}
             for item in usd:
                 form = item.get("form", "")
                 if form in ("10-Q", "10-K"):
                     end = item.get("end", "")
                     val = item.get("val", 0)
-                    accn = item.get("accn", "")
-                    if end and accn not in seen:
-                        seen.add(accn)
-                        quarterly.append({"period": end, "value": val, "form": form})
-            # 日付順ソートして直近8件
+                    start = item.get("start", "")
+                    if end:
+                        # 同じ期間なら値が小さい方（四半期単体）を優先
+                        if end not in period_dict or val < period_dict[end]["value"]:
+                            period_dict[end] = {"period": end, "value": val, "form": form, "start": start}
+            quarterly = list(period_dict.values())
             quarterly.sort(key=lambda x: x["period"])
             return quarterly[-8:] if len(quarterly) >= 2 else []
-
         revenue_data = []
         for key in revenue_keys:
             revenue_data = extract_quarterly(key)
             if revenue_data:
                 break
-
         income_data = []
         for key in income_keys:
             income_data = extract_quarterly(key)
             if income_data:
                 break
-
-        # 億ドル単位に変換
         def to_billions(items):
-            return [
-                {
-                    "period": item["period"],
-                    "value": round(item["value"] / 1_000_000_000, 2),
-                    "form": item["form"]
-                }
-                for item in items
-            ]
-
-        return {
-            "revenue": to_billions(revenue_data),
-            "net_income": to_billions(income_data),
-            "currency": "USD Billions"
-        }
-
+            return [{"period": item["period"], "value": round(item["value"] / 1_000_000_000, 2), "form": item["form"]} for item in items]
+        return {"revenue": to_billions(revenue_data), "net_income": to_billions(income_data), "currency": "USD Billions"}
     except Exception as e:
         print(f"Financial history error: {e}")
         return {"revenue": [], "net_income": [], "currency": "USD Billions"}
@@ -184,12 +255,17 @@ def analyze_with_claude(filing_text, ticker, form_type, filing_date, language):
     form_desc = form_descriptions.get(form_type, form_type)
     system_prompt = f"""You are an expert financial analyst specializing in SEC filings.
 Analyze the provided {form_type} ({form_desc}) and respond in {lang_label}.
+IMPORTANT RULES:
+- Always extract and state specific dollar amounts, percentages, and figures when available
+- Never say "figures are not available" or "not included in the text" - instead summarize what IS available
+- If exact numbers are not in the text, use the directional information (growth%, YoY trends) that is available
+- Be concise and factual
 Return ONLY a JSON object with no additional text or code blocks:
 {{
-    "revenue_profit_summary": "Revenue and profit summary including YoY comparison",
-    "management_topics": "Key management statements and topics (bullet points)",
+    "revenue_profit_summary": "Revenue and profit summary with specific numbers and YoY comparison. Include quarterly and cumulative figures if available.",
+    "management_topics": "Key management statements and topics as bullet points",
     "investor_summary": "One or two sentence summary for investors",
-    "disclaimer": "This analysis is for informational purposes only and does not constitute investment advice."
+    "disclaimer": "This analysis is for informational purposes only and does not constitute investment advice. Please make investment decisions at your own risk."
 }}"""
     message = client.messages.create(
         model="claude-sonnet-4-5",
