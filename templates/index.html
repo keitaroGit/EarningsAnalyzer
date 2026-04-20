@@ -66,6 +66,14 @@
     .next-earnings-box.show { display: flex; }
     .next-earnings-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
     .next-earnings-date { font-family: 'DM Mono', monospace; font-size: 0.88rem; color: var(--text); font-weight: 500; margin-left: auto; }
+    /* Consensus box */
+    .consensus-box { display: none; background: rgba(74,232,168,0.05); border: 1px solid rgba(74,232,168,0.2); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+    .consensus-box.show { display: block; }
+    .consensus-header { padding: 10px 18px; background: rgba(74,232,168,0.05); border-bottom: 1px solid rgba(74,232,168,0.15); font-family: 'DM Mono', monospace; font-size: 0.64rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); }
+    .consensus-body { padding: 12px 18px; display: flex; gap: 16px; flex-wrap: wrap; }
+    .consensus-item { font-family: 'DM Mono', monospace; font-size: 0.78rem; }
+    .consensus-period { color: var(--muted); font-size: 0.68rem; margin-bottom: 2px; }
+    .consensus-value { color: var(--accent2); font-weight: 500; }
     /* Charts */
     .charts-section { display: none; margin-top: 10px; }
     .charts-section.show { display: block; }
@@ -139,6 +147,12 @@
         <div class="result-meta" id="result-meta">COMPLETE</div>
       </div>
 
+      <!-- コンセンサス予想 -->
+      <div class="consensus-box" id="consensus-box">
+        <div class="consensus-header">📊 Analyst Consensus Estimates</div>
+        <div class="consensus-body" id="consensus-body"></div>
+      </div>
+
       <div class="result-section">
         <div class="result-section-header">Revenue &amp; Profit Summary</div>
         <div class="result-section-body" id="res-revenue"></div>
@@ -176,6 +190,14 @@
             <div class="no-data" id="income-no-data" style="display:none;">No net income data available</div>
           </div>
         </div>
+
+        <div class="chart-card" id="eps-card">
+          <div class="chart-card-header">EPS — Diluted (USD per share)</div>
+          <div class="chart-card-body">
+            <canvas id="epsChart" height="140"></canvas>
+            <div class="no-data" id="eps-no-data" style="display:none;">No EPS data available</div>
+          </div>
+        </div>
       </div>
 
       <div class="next-earnings-box" id="next-earnings-box">
@@ -197,9 +219,12 @@
     const nextEarningsBox  = document.getElementById('next-earnings-box');
     const nextEarningsDate = document.getElementById('next-earnings-date');
     const chartsSection    = document.getElementById('charts-section');
+    const consensusBox     = document.getElementById('consensus-box');
+    const consensusBody    = document.getElementById('consensus-body');
 
     let revenueChart = null;
     let incomeChart  = null;
+    let epsChart     = null;
 
     tickerInput.addEventListener('input', () => {
       tickerInput.value = tickerInput.value.toUpperCase().replace(/[^A-Z]/g, '');
@@ -210,19 +235,16 @@
       if (e.key === 'Enter' && !analyzeBtn.disabled) analyzeBtn.click();
     });
 
-    function makeChart(canvasId, noDataId, labels, values, color) {
+    function makeChart(canvasId, noDataId, labels, values, color, prefix='$', suffix='') {
       const canvas = document.getElementById(canvasId);
       const noData = document.getElementById(noDataId);
-
       if (!values || values.length === 0) {
         canvas.style.display = 'none';
         noData.style.display = 'block';
         return null;
       }
-
       canvas.style.display = 'block';
       noData.style.display = 'none';
-
       const ctx = canvas.getContext('2d');
       return new Chart(ctx, {
         type: 'bar',
@@ -242,23 +264,13 @@
             legend: { display: false },
             tooltip: {
               callbacks: {
-                label: ctx => `$${ctx.parsed.y.toFixed(2)}B`
+                label: ctx => `${prefix}${ctx.parsed.y.toFixed(2)}${suffix}`
               }
             }
           },
           scales: {
-            x: {
-              ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
-              grid: { color: 'rgba(255,255,255,0.05)' }
-            },
-            y: {
-              ticks: {
-                color: '#6b7280',
-                font: { family: 'DM Mono', size: 10 },
-                callback: v => `$${v}B`
-              },
-              grid: { color: 'rgba(255,255,255,0.05)' }
-            }
+            x: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, callback: v => `${prefix}${v}${suffix}` }, grid: { color: 'rgba(255,255,255,0.05)' } }
           }
         }
       });
@@ -274,13 +286,14 @@
       resultArea.classList.remove('show');
       nextEarningsBox.classList.remove('show');
       chartsSection.classList.remove('show');
+      consensusBox.classList.remove('show');
       loadingText.textContent = `Fetching ${reportType} from SEC EDGAR...`;
       loading.classList.add('show');
       analyzeBtn.disabled = true;
 
-      // Destroy old charts
       if (revenueChart) { revenueChart.destroy(); revenueChart = null; }
       if (incomeChart)  { incomeChart.destroy();  incomeChart  = null; }
+      if (epsChart)     { epsChart.destroy();      epsChart     = null; }
 
       try {
         const res  = await fetch('/analyze', {
@@ -303,6 +316,23 @@
           ? `${data.company_name} · ${data.form_type} · ${data.filing_date}`
           : `${ticker} — COMPLETE`;
 
+        // コンセンサス予想表示
+        if (data.consensus && data.consensus.length > 0) {
+          consensusBody.innerHTML = '';
+          data.consensus.forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'consensus-item';
+            let html = `<div class="consensus-period">${c.period}</div>`;
+            html += `<div class="consensus-value">EPS Est: $${c.eps_estimate}</div>`;
+            if (c.revenue_estimate_b) {
+              html += `<div class="consensus-value">Rev Est: $${c.revenue_estimate_b}B</div>`;
+            }
+            div.innerHTML = html;
+            consensusBody.appendChild(div);
+          });
+          consensusBox.classList.add('show');
+        }
+
         if (data.next_earnings) {
           nextEarningsDate.textContent = data.next_earnings;
           nextEarningsBox.classList.add('show');
@@ -310,16 +340,19 @@
 
         // Charts
         const fh = data.financial_history;
-        if (fh && (fh.revenue.length > 0 || fh.net_income.length > 0)) {
+        if (fh && (fh.revenue.length > 0 || fh.net_income.length > 0 || fh.eps.length > 0)) {
           chartsSection.classList.add('show');
-
           const revLabels = fh.revenue.map(d => d.period.substring(0, 7));
           const revValues = fh.revenue.map(d => d.value);
-          revenueChart = makeChart('revenueChart', 'revenue-no-data', revLabels, revValues, 'rgba(232,200,74,1)');
+          revenueChart = makeChart('revenueChart', 'revenue-no-data', revLabels, revValues, 'rgba(232,200,74,1)', '$', 'B');
 
           const incLabels = fh.net_income.map(d => d.period.substring(0, 7));
           const incValues = fh.net_income.map(d => d.value);
-          incomeChart = makeChart('incomeChart', 'income-no-data', incLabels, incValues, 'rgba(74,232,168,1)');
+          incomeChart = makeChart('incomeChart', 'income-no-data', incLabels, incValues, 'rgba(74,232,168,1)', '$', 'B');
+
+          const epsLabels = fh.eps.map(d => d.period.substring(0, 7));
+          const epsValues = fh.eps.map(d => d.value);
+          epsChart = makeChart('epsChart', 'eps-no-data', epsLabels, epsValues, 'rgba(168,130,232,1)', '$', '');
         }
 
         resultArea.classList.add('show');

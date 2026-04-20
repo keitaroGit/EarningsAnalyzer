@@ -35,17 +35,11 @@ def get_cik_from_ticker(ticker):
 
 
 def extract_relevant_text(raw_text, form_type):
-    """書類種別ごとに複数セクションを狙い撃ちして抽出・結合"""
-    MAX_CHARS = 25000  # セクションごとの最大文字数
+    MAX_CHARS = 25000
     text_upper = raw_text.upper()
 
     if form_type in ("10-Q", "10-K"):
-        # セクション1: Results of Operations（経営分析・前年比説明）
-        results_keywords = [
-            "RESULTS OF OPERATIONS",
-            "MANAGEMENT'S DISCUSSION",
-        ]
-        # セクション2: 財務諸表（具体的な数字）
+        results_keywords = ["RESULTS OF OPERATIONS", "MANAGEMENT'S DISCUSSION"]
         financial_keywords = [
             "CONSOLIDATED STATEMENTS OF OPERATIONS",
             "CONSOLIDATED STATEMENTS OF INCOME",
@@ -53,7 +47,6 @@ def extract_relevant_text(raw_text, form_type):
             "STATEMENTS OF OPERATIONS",
             "STATEMENTS OF INCOME",
         ]
-
         section1 = ""
         for kw in results_keywords:
             idx = text_upper.find(kw)
@@ -63,7 +56,6 @@ def extract_relevant_text(raw_text, form_type):
                 section1 = raw_text[start:end]
                 print(f"Section1 found: '{kw}' at {idx}, {len(section1)} chars")
                 break
-
         section2 = ""
         for kw in financial_keywords:
             idx = text_upper.find(kw)
@@ -73,7 +65,6 @@ def extract_relevant_text(raw_text, form_type):
                 section2 = raw_text[start:end]
                 print(f"Section2 found: '{kw}' at {idx}, {len(section2)} chars")
                 break
-
         if section1 or section2:
             combined = ""
             if section2:
@@ -82,20 +73,11 @@ def extract_relevant_text(raw_text, form_type):
                 combined += "=== RESULTS OF OPERATIONS ===\n" + section1
             print(f"Combined text: {len(combined)} chars")
             return combined
-
-        # 見つからない場合は先頭から
         print(f"No keywords found, using first 50000 chars")
         return raw_text[:50000]
 
     elif form_type == "8-K":
-        keywords = [
-            "Item 2.02",
-            "ITEM 2.02",
-            "Results of Operations and Financial Condition",
-            "RESULTS OF OPERATIONS",
-            "Item 2.01",
-            "Item 1.01",
-        ]
+        keywords = ["Item 2.02", "ITEM 2.02", "Results of Operations and Financial Condition", "RESULTS OF OPERATIONS", "Item 2.01", "Item 1.01"]
         for kw in keywords:
             idx = text_upper.find(kw.upper())
             if idx != -1:
@@ -107,14 +89,7 @@ def extract_relevant_text(raw_text, form_type):
         return raw_text[:50000]
 
     elif form_type == "DEF 14A":
-        keywords = [
-            "EXECUTIVE COMPENSATION",
-            "Executive Compensation",
-            "COMPENSATION DISCUSSION",
-            "Compensation Discussion",
-            "SUMMARY COMPENSATION TABLE",
-            "Summary Compensation Table",
-        ]
+        keywords = ["EXECUTIVE COMPENSATION", "Executive Compensation", "COMPENSATION DISCUSSION", "Compensation Discussion", "SUMMARY COMPENSATION TABLE", "Summary Compensation Table"]
         for kw in keywords:
             idx = text_upper.find(kw.upper())
             if idx != -1:
@@ -155,12 +130,14 @@ def get_filing_text(cik, target_form):
 
 
 def get_financial_history(cik, ticker):
+    """SEC EDGAR XBRLから過去8期分の財務データ＋EPSを取得"""
     try:
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
         resp = requests.get(url, headers=SEC_HEADERS, timeout=15)
         resp.raise_for_status()
         facts = resp.json()
         us_gaap = facts.get("facts", {}).get("us-gaap", {})
+
         revenue_keys = [
             "Revenues",
             "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -173,42 +150,98 @@ def get_financial_history(cik, ticker):
             "ProfitLoss",
             "NetIncomeLossAvailableToCommonStockholdersBasic",
         ]
-        def extract_quarterly(key):
+        eps_keys = [
+            "EarningsPerShareDiluted",
+            "EarningsPerShareBasic",
+        ]
+
+        def extract_quarterly(key, unit="USD"):
             data = us_gaap.get(key, {})
             units = data.get("units", {})
-            usd = units.get("USD", [])
-            # 期間ごとに最小値を選択（四半期単体の値を優先）
+            items = units.get(unit, [])
             period_dict = {}
-            for item in usd:
+            for item in items:
                 form = item.get("form", "")
                 if form in ("10-Q", "10-K"):
                     end = item.get("end", "")
                     val = item.get("val", 0)
-                    start = item.get("start", "")
                     if end:
-                        # 同じ期間なら値が小さい方（四半期単体）を優先
                         if end not in period_dict or val < period_dict[end]["value"]:
-                            period_dict[end] = {"period": end, "value": val, "form": form, "start": start}
+                            period_dict[end] = {"period": end, "value": val, "form": form}
             quarterly = list(period_dict.values())
             quarterly.sort(key=lambda x: x["period"])
             return quarterly[-8:] if len(quarterly) >= 2 else []
-        # 最新データがあるキーを選択
-        def best_data(keys):
+
+        def best_data(keys, unit="USD"):
             best = []
             for key in keys:
-                data = extract_quarterly(key)
+                data = extract_quarterly(key, unit)
                 if data and (not best or data[-1]["period"] > best[-1]["period"]):
                     best = data
             return best
 
         revenue_data = best_data(revenue_keys)
-        income_data = best_data(income_keys)
+        income_data  = best_data(income_keys)
+        eps_data     = best_data(eps_keys, unit="USD/shares")
+
         def to_billions(items):
             return [{"period": item["period"], "value": round(item["value"] / 1_000_000_000, 2), "form": item["form"]} for item in items]
-        return {"revenue": to_billions(revenue_data), "net_income": to_billions(income_data), "currency": "USD Billions"}
+
+        def to_eps(items):
+            return [{"period": item["period"], "value": round(item["value"], 2), "form": item["form"]} for item in items]
+
+        return {
+            "revenue":    to_billions(revenue_data),
+            "net_income": to_billions(income_data),
+            "eps":        to_eps(eps_data),
+            "currency":   "USD Billions"
+        }
+
     except Exception as e:
         print(f"Financial history error: {e}")
-        return {"revenue": [], "net_income": [], "currency": "USD Billions"}
+        return {"revenue": [], "net_income": [], "eps": [], "currency": "USD Billions"}
+
+
+def get_consensus_estimates(ticker):
+    """Yahoo FinanceからEPSコンセンサス予想を取得"""
+    try:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://finance.yahoo.com",
+        })
+        # クッキー取得
+        session.get(f"https://finance.yahoo.com/quote/{ticker}", timeout=8)
+        # crumb取得
+        crumb_resp = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8)
+        crumb = crumb_resp.text.strip()
+
+        if crumb:
+            url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=earningsTrend&crumb={crumb}"
+            resp = session.get(url, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                result = data.get("quoteSummary", {}).get("result", [])
+                if result:
+                    trend = result[0].get("earningsTrend", {}).get("trend", [])
+                    estimates = []
+                    for t in trend[:2]:  # 直近2期分
+                        period = t.get("period", "")
+                        eps_est = t.get("earningsEstimate", {}).get("avg", {}).get("raw")
+                        revenue_est = t.get("revenueEstimate", {}).get("avg", {}).get("raw")
+                        if eps_est is not None:
+                            estimates.append({
+                                "period": period,
+                                "eps_estimate": round(eps_est, 2),
+                                "revenue_estimate_b": round(revenue_est / 1_000_000_000, 2) if revenue_est else None
+                            })
+                    if estimates:
+                        print(f"Consensus estimates for {ticker}: {estimates}")
+                        return estimates
+    except Exception as e:
+        print(f"Consensus estimate fetch failed: {e}")
+    return []
 
 
 def get_next_earnings_date(ticker, cik):
@@ -245,7 +278,7 @@ def get_next_earnings_date(ticker, cik):
     return None
 
 
-def analyze_with_claude(filing_text, ticker, form_type, filing_date, language):
+def analyze_with_claude(filing_text, ticker, form_type, filing_date, language, consensus):
     lang_label = "Japanese" if language == "ja" else "English"
     form_descriptions = {
         "10-Q": "Quarterly Report",
@@ -254,25 +287,38 @@ def analyze_with_claude(filing_text, ticker, form_type, filing_date, language):
         "DEF 14A": "Proxy Statement"
     }
     form_desc = form_descriptions.get(form_type, form_type)
+
+    # コンセンサス情報をプロンプトに追加
+    consensus_text = ""
+    if consensus:
+        consensus_text = "\n\n--- ANALYST CONSENSUS ESTIMATES ---\n"
+        for c in consensus:
+            consensus_text += f"Period: {c['period']}, EPS Estimate: ${c['eps_estimate']}"
+            if c.get('revenue_estimate_b'):
+                consensus_text += f", Revenue Estimate: ${c['revenue_estimate_b']}B"
+            consensus_text += "\n"
+
     system_prompt = f"""You are an expert financial analyst specializing in SEC filings.
 Analyze the provided {form_type} ({form_desc}) and respond ENTIRELY in {lang_label}. ALL text in the JSON values must be in {lang_label}. Do not use any other language.
 IMPORTANT RULES:
 - Always extract and state specific dollar amounts, percentages, and figures when available
 - Never say "figures are not available" or "not included in the text" - instead summarize what IS available
 - If exact numbers are not in the text, use the directional information (growth%, YoY trends) that is available
+- If analyst consensus estimates are provided, compare actual results vs estimates and mention beat/miss
 - Be concise and factual
 Return ONLY a JSON object with no additional text or code blocks:
 {{
-    "revenue_profit_summary": "Revenue and profit summary with specific numbers and YoY comparison. Include quarterly and cumulative figures if available.",
+    "revenue_profit_summary": "Detailed revenue and profit summary with specific numbers, YoY comparison, and EPS. If consensus data available, include beat/miss vs estimates.",
     "management_topics": "Key management statements and topics as bullet points",
     "investor_summary": "One or two sentence summary for investors",
     "disclaimer": "This analysis is for informational purposes only and does not constitute investment advice. Please make investment decisions at your own risk."
 }}"""
+
     message = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=2000,
         system=system_prompt,
-        messages=[{"role": "user", "content": f"Ticker: {ticker}\nForm: {form_type}\nFiling Date: {filing_date}\n\n--- Filing Text ---\n{filing_text}"}]
+        messages=[{"role": "user", "content": f"Ticker: {ticker}\nForm: {form_type}\nFiling Date: {filing_date}\n\n--- Filing Text ---\n{filing_text}{consensus_text}"}]
     )
     response_text = message.content[0].text
     json_start = response_text.find('{')
@@ -300,11 +346,13 @@ def analyze():
             return jsonify({'error': 'Invalid report type'}), 400
         cik, company_name        = get_cik_from_ticker(ticker)
         filing_text, filing_date = get_filing_text(cik, report_type)
-        result                   = analyze_with_claude(filing_text, ticker, report_type, filing_date, language)
+        consensus                = get_consensus_estimates(ticker)
+        result                   = analyze_with_claude(filing_text, ticker, report_type, filing_date, language, consensus)
         next_earnings            = get_next_earnings_date(ticker, cik)
         financial_history        = get_financial_history(cik, ticker)
         print(f"Next earnings for {ticker}: {next_earnings}")
         print(f"Financial history revenue points: {len(financial_history['revenue'])}")
+        print(f"EPS data points: {len(financial_history['eps'])}")
         return jsonify({
             'success':           True,
             'result':            result,
@@ -312,7 +360,8 @@ def analyze():
             'form_type':         report_type,
             'filing_date':       filing_date,
             'next_earnings':     next_earnings,
-            'financial_history': financial_history
+            'financial_history': financial_history,
+            'consensus':         consensus
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
