@@ -1,0 +1,39 @@
+# Claude Code local settings
+.claude/
+
+# Virtual environments
+venv/
+venv2/
+venv_new/
+.venv/
+
+# Environment variables (never commit secrets)
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Uploads (for security)
+uploads/*
