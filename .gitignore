@@ -36,4 +36,4 @@ Thumbs.db
 *.temp
 
 # Uploads (for security)
-uploads/*
+uploads/

@@ -35,61 +35,72 @@ def get_cik_from_ticker(ticker):
 
 
 def extract_relevant_text(raw_text, form_type):
-    """書類種別ごとに重要セクションを狙い撃ちして抽出"""
-    MAX_CHARS = 50000
-
-    # 書類種別ごとのキーワード優先順位
-    keywords_map = {
-        "10-Q": [
-            "CONSOLIDATED STATEMENTS OF OPERATIONS",
-            "CONSOLIDATED STATEMENTS OF INCOME",
-            "STATEMENTS OF OPERATIONS",
-            "STATEMENTS OF INCOME",
-            "RESULTS OF OPERATIONS",
-            "Financial Statements",
-        ],
-        "10-K": [
-            "CONSOLIDATED STATEMENTS OF OPERATIONS",
-            "CONSOLIDATED STATEMENTS OF INCOME",
-            "STATEMENTS OF OPERATIONS",
-            "STATEMENTS OF INCOME",
-            "RESULTS OF OPERATIONS",
-            "Financial Statements",
-        ],
-        "8-K": [
-            "Item 2.02",
-            "Results of Operations and Financial Condition",
-            "Item 2.01",
-            "Item 1.01",
-            "RESULTS OF OPERATIONS",
-        ],
-        "DEF 14A": [
-            "EXECUTIVE COMPENSATION",
-            "Executive Compensation",
-            "COMPENSATION DISCUSSION",
-            "Compensation Discussion",
-            "SUMMARY COMPENSATION TABLE",
-            "Summary Compensation Table",
-        ],
-    }
-
-    keywords = keywords_map.get(form_type, [])
-
-    # キーワードを探して該当箇所から抽出
+    MAX_CHARS = 25000
     text_upper = raw_text.upper()
-    for keyword in keywords:
-        idx = text_upper.find(keyword.upper())
-        if idx != -1:
-            # キーワードの少し前から取得（前後の文脈も含める）
-            start = max(0, idx - 500)
-            end = min(len(raw_text), idx + MAX_CHARS)
-            extracted = raw_text[start:end]
-            print(f"Found keyword '{keyword}' at index {idx}, extracting {len(extracted)} chars")
-            return extracted
 
-    # キーワードが見つからない場合は先頭から50,000文字
-    print(f"No keyword found for {form_type}, using first {MAX_CHARS} chars")
-    return raw_text[:MAX_CHARS]
+    if form_type in ("10-Q", "10-K"):
+        results_keywords = ["RESULTS OF OPERATIONS", "MANAGEMENT'S DISCUSSION"]
+        financial_keywords = [
+            "CONSOLIDATED STATEMENTS OF OPERATIONS",
+            "CONSOLIDATED STATEMENTS OF INCOME",
+            "CONDENSED CONSOLIDATED STATEMENTS",
+            "STATEMENTS OF OPERATIONS",
+            "STATEMENTS OF INCOME",
+        ]
+        section1 = ""
+        for kw in results_keywords:
+            idx = text_upper.find(kw)
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS)
+                section1 = raw_text[start:end]
+                print(f"Section1 found: '{kw}' at {idx}, {len(section1)} chars")
+                break
+        section2 = ""
+        for kw in financial_keywords:
+            idx = text_upper.find(kw)
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS)
+                section2 = raw_text[start:end]
+                print(f"Section2 found: '{kw}' at {idx}, {len(section2)} chars")
+                break
+        if section1 or section2:
+            combined = ""
+            if section2:
+                combined += "=== FINANCIAL STATEMENTS ===\n" + section2 + "\n\n"
+            if section1:
+                combined += "=== RESULTS OF OPERATIONS ===\n" + section1
+            print(f"Combined text: {len(combined)} chars")
+            return combined
+        print(f"No keywords found, using first 50000 chars")
+        return raw_text[:50000]
+
+    elif form_type == "8-K":
+        keywords = ["Item 2.02", "ITEM 2.02", "Results of Operations and Financial Condition", "RESULTS OF OPERATIONS", "Item 2.01", "Item 1.01"]
+        for kw in keywords:
+            idx = text_upper.find(kw.upper())
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS * 2)
+                extracted = raw_text[start:end]
+                print(f"8-K keyword '{kw}' found at {idx}, {len(extracted)} chars")
+                return extracted
+        return raw_text[:50000]
+
+    elif form_type == "DEF 14A":
+        keywords = ["EXECUTIVE COMPENSATION", "Executive Compensation", "COMPENSATION DISCUSSION", "Compensation Discussion", "SUMMARY COMPENSATION TABLE", "Summary Compensation Table"]
+        for kw in keywords:
+            idx = text_upper.find(kw.upper())
+            if idx != -1:
+                start = max(0, idx - 200)
+                end = min(len(raw_text), idx + MAX_CHARS * 2)
+                extracted = raw_text[start:end]
+                print(f"DEF14A keyword '{kw}' found at {idx}, {len(extracted)} chars")
+                return extracted
+        return raw_text[:50000]
+
+    return raw_text[:50000]
 
 
 def get_filing_text(cik, target_form):
@@ -110,18 +121,16 @@ def get_filing_text(cik, target_form):
             doc_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession}/{primary_doc}"
             doc_resp = requests.get(doc_url, headers=SEC_HEADERS, timeout=15)
             doc_resp.raise_for_status()
-            # HTMLタグ除去
             text = doc_resp.text
             text = re.sub(r'<[^>]+>', ' ', text)
             text = re.sub(r'\s+', ' ', text).strip()
-            # 書類種別に応じた重要セクション抽出
             extracted = extract_relevant_text(text, target_form)
             return extracted, filing_date
     raise Exception(f"{target_form} filing not found.")
 
 
 def get_financial_history(cik, ticker):
-    """SEC EDGAR XBRLから過去8期分の財務データを取得"""
+    """SEC EDGAR XBRLから過去8期分の財務データ＋EPSを取得"""
     try:
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
         resp = requests.get(url, headers=SEC_HEADERS, timeout=15)
@@ -130,8 +139,8 @@ def get_financial_history(cik, ticker):
         us_gaap = facts.get("facts", {}).get("us-gaap", {})
 
         revenue_keys = [
-            "RevenueFromContractWithCustomerExcludingAssessedTax",
             "Revenues",
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
             "SalesRevenueNet",
             "RevenueFromContractWithCustomerIncludingAssessedTax",
             "SalesRevenueGoodsNet",
@@ -141,56 +150,98 @@ def get_financial_history(cik, ticker):
             "ProfitLoss",
             "NetIncomeLossAvailableToCommonStockholdersBasic",
         ]
+        eps_keys = [
+            "EarningsPerShareDiluted",
+            "EarningsPerShareBasic",
+        ]
 
-        def extract_quarterly(key):
+        def extract_quarterly(key, unit="USD"):
             data = us_gaap.get(key, {})
             units = data.get("units", {})
-            usd = units.get("USD", [])
-            quarterly = []
-            seen = set()
-            for item in usd:
+            items = units.get(unit, [])
+            period_dict = {}
+            for item in items:
                 form = item.get("form", "")
                 if form in ("10-Q", "10-K"):
                     end = item.get("end", "")
                     val = item.get("val", 0)
-                    accn = item.get("accn", "")
-                    if end and accn not in seen:
-                        seen.add(accn)
-                        quarterly.append({"period": end, "value": val, "form": form})
+                    if end:
+                        if end not in period_dict or val < period_dict[end]["value"]:
+                            period_dict[end] = {"period": end, "value": val, "form": form}
+            quarterly = list(period_dict.values())
             quarterly.sort(key=lambda x: x["period"])
             return quarterly[-8:] if len(quarterly) >= 2 else []
 
-        revenue_data = []
-        for key in revenue_keys:
-            revenue_data = extract_quarterly(key)
-            if revenue_data:
-                break
+        def best_data(keys, unit="USD"):
+            best = []
+            for key in keys:
+                data = extract_quarterly(key, unit)
+                if data and (not best or data[-1]["period"] > best[-1]["period"]):
+                    best = data
+            return best
 
-        income_data = []
-        for key in income_keys:
-            income_data = extract_quarterly(key)
-            if income_data:
-                break
+        revenue_data = best_data(revenue_keys)
+        income_data  = best_data(income_keys)
+        eps_data     = best_data(eps_keys, unit="USD/shares")
 
         def to_billions(items):
-            return [
-                {
-                    "period": item["period"],
-                    "value": round(item["value"] / 1_000_000_000, 2),
-                    "form": item["form"]
-                }
-                for item in items
-            ]
+            return [{"period": item["period"], "value": round(item["value"] / 1_000_000_000, 2), "form": item["form"]} for item in items]
+
+        def to_eps(items):
+            return [{"period": item["period"], "value": round(item["value"], 2), "form": item["form"]} for item in items]
 
         return {
-            "revenue": to_billions(revenue_data),
+            "revenue":    to_billions(revenue_data),
             "net_income": to_billions(income_data),
-            "currency": "USD Billions"
+            "eps":        to_eps(eps_data),
+            "currency":   "USD Billions"
         }
 
     except Exception as e:
         print(f"Financial history error: {e}")
-        return {"revenue": [], "net_income": [], "currency": "USD Billions"}
+        return {"revenue": [], "net_income": [], "eps": [], "currency": "USD Billions"}
+
+
+def get_consensus_estimates(ticker):
+    """Yahoo FinanceからEPSコンセンサス予想を取得"""
+    try:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://finance.yahoo.com",
+        })
+        # クッキー取得
+        session.get(f"https://finance.yahoo.com/quote/{ticker}", timeout=8)
+        # crumb取得
+        crumb_resp = session.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=8)
+        crumb = crumb_resp.text.strip()
+
+        if crumb:
+            url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=earningsTrend&crumb={crumb}"
+            resp = session.get(url, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                result = data.get("quoteSummary", {}).get("result", [])
+                if result:
+                    trend = result[0].get("earningsTrend", {}).get("trend", [])
+                    estimates = []
+                    for t in trend[:2]:  # 直近2期分
+                        period = t.get("period", "")
+                        eps_est = t.get("earningsEstimate", {}).get("avg", {}).get("raw")
+                        revenue_est = t.get("revenueEstimate", {}).get("avg", {}).get("raw")
+                        if eps_est is not None:
+                            estimates.append({
+                                "period": period,
+                                "eps_estimate": round(eps_est, 2),
+                                "revenue_estimate_b": round(revenue_est / 1_000_000_000, 2) if revenue_est else None
+                            })
+                    if estimates:
+                        print(f"Consensus estimates for {ticker}: {estimates}")
+                        return estimates
+    except Exception as e:
+        print(f"Consensus estimate fetch failed: {e}")
+    return []
 
 
 def get_next_earnings_date(ticker, cik):
@@ -227,7 +278,7 @@ def get_next_earnings_date(ticker, cik):
     return None
 
 
-def analyze_with_claude(filing_text, ticker, form_type, filing_date, language):
+def analyze_with_claude(filing_text, ticker, form_type, filing_date, language, consensus):
     lang_label = "Japanese" if language == "ja" else "English"
     form_descriptions = {
         "10-Q": "Quarterly Report",
@@ -237,14 +288,29 @@ def analyze_with_claude(filing_text, ticker, form_type, filing_date, language):
     }
     form_desc = form_descriptions.get(form_type, form_type)
 
+    # コンセンサス情報をプロンプトに追加
+    consensus_text = ""
+    if consensus:
+        consensus_text = "\n\n--- ANALYST CONSENSUS ESTIMATES ---\n"
+        for c in consensus:
+            consensus_text += f"Period: {c['period']}, EPS Estimate: ${c['eps_estimate']}"
+            if c.get('revenue_estimate_b'):
+                consensus_text += f", Revenue Estimate: ${c['revenue_estimate_b']}B"
+            consensus_text += "\n"
+
     system_prompt = f"""You are an expert financial analyst specializing in SEC filings.
-Analyze the provided {form_type} ({form_desc}) and respond in {lang_label}.
-Focus on extracting specific numbers, percentages, and figures from the text.
+Analyze the provided {form_type} ({form_desc}) and respond ENTIRELY in {lang_label}. ALL text in the JSON values must be in {lang_label}. Do not use any other language.
+IMPORTANT RULES:
+- Always extract and state specific dollar amounts, percentages, and figures when available
+- Never say "figures are not available" or "not included in the text" - instead summarize what IS available
+- If exact numbers are not in the text, use the directional information (growth%, YoY trends) that is available
+- If analyst consensus estimates are provided, compare actual results vs estimates and mention beat/miss
+- Be concise and factual
 Return ONLY a JSON object with no additional text or code blocks:
 {{
-    "revenue_profit_summary": "Detailed revenue and profit summary with specific numbers and YoY comparison. For 8-K: key disclosure content. For DEF 14A: executive compensation and proposals summary.",
-    "management_topics": "Key management statements and topics (bullet points with specific details)",
-    "investor_summary": "One or two sentence summary for investors highlighting the most important points",
+    "revenue_profit_summary": "Detailed revenue and profit summary with specific numbers, YoY comparison, and EPS. If consensus data available, include beat/miss vs estimates.",
+    "management_topics": "Key management statements and topics as bullet points",
+    "investor_summary": "One or two sentence summary for investors",
     "disclaimer": "This analysis is for informational purposes only and does not constitute investment advice. Please make investment decisions at your own risk."
 }}"""
 
@@ -252,7 +318,7 @@ Return ONLY a JSON object with no additional text or code blocks:
         model="claude-sonnet-4-5",
         max_tokens=2000,
         system=system_prompt,
-        messages=[{"role": "user", "content": f"Ticker: {ticker}\nForm: {form_type}\nFiling Date: {filing_date}\n\n--- Filing Text ---\n{filing_text}"}]
+        messages=[{"role": "user", "content": f"Ticker: {ticker}\nForm: {form_type}\nFiling Date: {filing_date}\n\n--- Filing Text ---\n{filing_text}{consensus_text}"}]
     )
     response_text = message.content[0].text
     json_start = response_text.find('{')
@@ -280,11 +346,13 @@ def analyze():
             return jsonify({'error': 'Invalid report type'}), 400
         cik, company_name        = get_cik_from_ticker(ticker)
         filing_text, filing_date = get_filing_text(cik, report_type)
-        result                   = analyze_with_claude(filing_text, ticker, report_type, filing_date, language)
+        consensus                = get_consensus_estimates(ticker)
+        result                   = analyze_with_claude(filing_text, ticker, report_type, filing_date, language, consensus)
         next_earnings            = get_next_earnings_date(ticker, cik)
         financial_history        = get_financial_history(cik, ticker)
         print(f"Next earnings for {ticker}: {next_earnings}")
         print(f"Financial history revenue points: {len(financial_history['revenue'])}")
+        print(f"EPS data points: {len(financial_history['eps'])}")
         return jsonify({
             'success':           True,
             'result':            result,
@@ -292,7 +360,8 @@ def analyze():
             'form_type':         report_type,
             'filing_date':       filing_date,
             'next_earnings':     next_earnings,
-            'financial_history': financial_history
+            'financial_history': financial_history,
+            'consensus':         consensus
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
